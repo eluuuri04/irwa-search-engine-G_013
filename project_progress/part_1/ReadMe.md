@@ -1,4 +1,4 @@
-# **README — Text Processing and EDA for Fashion Products Dataset**
+# **Part 1 — Text Processing and EDA for Fashion Products Dataset**
 
 ## **Project Overview**
 
