@@ -43,6 +43,7 @@ drive.mount('/content/drive')
 docs_path = '/content/drive/MyDrive/fashion_products_dataset.json'
 validation_path = '/content/drive/MyDrive/validation_labels.csv'
 ```
+These data paths can be changed, depending on where the notebook is executed. The rest of the code will execute normally, independently on the paths. 
 
 3. Run the cells with imports and nltk.download() (cell \[2\]).
 
