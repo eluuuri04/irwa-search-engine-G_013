@@ -1,6 +1,4 @@
 
-
-````
 ### README — Advanced Ranking, Word2Vec & Evaluation
 
 ### Project Overview
