@@ -167,7 +167,4 @@ The file `our_queries_validation.csv` provides multiple “relevance strategies�
 
 When the notebook is fully executed, it outputs several types of results. For each query and ranking method, it prints the top ranked products together with their titles, scores, and key metadata (such as rating, discount, or price), which allows a qualitative inspection of how the different models behave (for example, whether Custom2 really pushes highly rated, well‑priced items forward). In addition, the evaluation section generates pandas DataFrames with per‑query metrics (Precision@10, Recall@10, F1@10) for every method and relevance strategy, as well as aggregated tables that show average performance across all queries. By comparing these tables, we can see, for instance, that some methods may do better when strict exact matching is required, while others (especially Word2Vec) can provide stronger recall and F1 under looser, more semantic relevance definitions, giving a more complete view of the trade‑offs between lexical and semantic ranking approaches in our fashion product search engine.
 
-```
-
-```
 
