@@ -1,3 +1,11 @@
+import re
+import math
+from collections import defaultdict
+from array import array
+from nltk.corpus import stopwords
+from nltk.stem import PorterStemmer, WordNetLemmatizer
+
+
 def build_terms(line):
     """
     Preprocess the text (title + description):

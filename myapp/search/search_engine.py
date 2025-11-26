@@ -1,6 +1,6 @@
 import random
 import numpy as np
-from myapp.algorithms import build_terms, create_index_with_tfidf, rank_products_custom2
+from myapp.search.algorithms import build_terms, create_index_with_tfidf, rank_products_custom2
 from myapp.search.objects import Document
 
 
@@ -31,7 +31,26 @@ class SearchEngine:
         print("Search query:", search_query)
         if 'INDEX' not in globals() or INDEX is None:
             print("Creant l'índex per primer cop...")
-            INDEX, PRODUCTS_INFO, TF, DF, IDF = create_index_with_tfidf(corpus)
+            corpus_dicts = [
+                {
+                    "pid": doc.pid,
+                    "title": doc.title,
+                    "description": doc.description,
+                    "brand": getattr(doc, "brand", ""),
+                    "category": getattr(doc, "category", ""),
+                    "sub_category": getattr(doc, "sub_category", ""),
+                    "product_details": getattr(doc, "product_details", ""),
+                    "seller": getattr(doc, "seller", ""),
+                    "out_of_stock": getattr(doc, "out_of_stock", False),
+                    "selling_price": str(getattr(doc, "selling_price") or 0),
+                    "actual_price": str(getattr(doc, "actual_price") or 0),
+                    "discount": str(getattr(doc, "discount") or 0),
+                    "average_rating": getattr(doc, "average_rating", None),
+                    "url": doc.url
+                }
+                for doc in corpus.values()
+            ]
+            INDEX, PRODUCTS_INFO, TF, DF, IDF = create_index_with_tfidf(corpus_dicts)
         else:
             print("Índex ja creat, usant-lo directament...")
             
