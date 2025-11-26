@@ -136,3 +136,4 @@ dmypy.json
 .venv
 irwa_env/
 data/
+.env
