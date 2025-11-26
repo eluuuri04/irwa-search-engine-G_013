@@ -1,6 +1,6 @@
 import random
 import numpy as np
-
+from myapp.algorithms import build_terms, create_index_with_tfidf, rank_products_custom2
 from myapp.search.objects import Document
 
 
@@ -23,14 +23,79 @@ def dummy_search(corpus: dict, search_id, num_results=20):
 
 
 class SearchEngine:
-    """Class that implements the search engine logic"""
+    """Class that implements the REAL search engine logic"""
 
     def search(self, search_query, search_id, corpus):
+        global INDEX, PRODUCTS_INFO, TF, DF, IDF
+        
         print("Search query:", search_query)
+        if 'INDEX' not in globals() or INDEX is None:
+            print("Creant l'índex per primer cop...")
+            INDEX, PRODUCTS_INFO, TF, DF, IDF = create_index_with_tfidf(corpus)
+        else:
+            print("Índex ja creat, usant-lo directament...")
+            
+        # 1. Preprocess query
+        query_terms = build_terms(search_query)
 
+        if not query_terms:
+            return []
+
+        # 2. Intersect documents
+        first_term = query_terms[0]
+        if first_term not in INDEX:
+            return []
+
+        docs = set(posting[0] for posting in INDEX[first_term])
+
+        for term in query_terms[1:]:
+            if term not in INDEX:
+                return []
+            term_docs = set(posting[0] for posting in INDEX[term])
+            docs &= term_docs
+
+        if not docs:
+            return []
+
+        # 3. Rank using CUSTOM2
+        ranked_docs, scores = rank_products_custom2(
+            query_terms,
+            INDEX,
+            IDF,
+            TF,
+            PRODUCTS_INFO,
+            list(docs)
+        )
+
+        # 4. Convert to Document objects for Flask
         results = []
-        ### You should implement your search logic here:
-        results = dummy_search(corpus, search_id)  # replace with call to search algorithm
+        for pid in ranked_docs[:20]:
+            prod = PRODUCTS_INFO[pid]
 
-        # results = search_in_corpus(search_query)
+            results.append(
+                Document(
+                    pid=pid,
+                    title=prod["title"],
+                    description=prod["description"],
+                    url="doc_details?pid={}&search_id={}".format(pid, search_id),
+                    ranking=1.0
+                )
+            )
+
         return results
+
+###############################################################################
+
+
+# class SearchEngine:
+#     """Class that implements the search engine logic"""
+
+#     def search(self, search_query, search_id, corpus):
+#         print("Search query:", search_query)
+
+#         results = []
+#         ### You should implement your search logic here:
+#         #results = dummy_search(corpus, search_id)  # replace with call to search algorithm
+
+#         # results = search_in_corpus(search_query)
+#         return results
