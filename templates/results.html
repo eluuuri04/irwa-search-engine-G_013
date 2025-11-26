@@ -13,15 +13,39 @@
     {% for item in results_list %}
         <div class="pb-3">
             <div class="doc-title">
-                <a href="{{ item.url }}">{{ item.title }}...
+                <!-- Route clicks through /doc_details with pid, qid, rank -->
+                <a href="{{ url_for('doc_details', pid=item.pid, qid=query_id, rank=loop.index) }}"
+                   target="_blank" rel="noopener">
+                    {{ item.title }}
                 </a>
             </div>
             <div class="doc-desc">
                 {{ item.doc_date }} — {{ item.description }}
             </div>
-
         </div>
-
     {% endfor %}
-{% endblock %}
 
+    <script>
+      // Track dwell time when user returns to results page
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          const lastPid = sessionStorage.getItem('last_pid');
+          const qid = "{{ query_id }}";
+          if (lastPid && qid) {
+            fetch(`/return_to_results?qid=${encodeURIComponent(qid)}&pid=${encodeURIComponent(lastPid)}`)
+              .catch(() => {});
+            sessionStorage.removeItem('last_pid');
+          }
+        }
+      });
+
+      // Store last clicked doc id
+      document.querySelectorAll('a[href*="doc_details"]').forEach(a => {
+        a.addEventListener('click', () => {
+          const params = new URLSearchParams(a.href.split('?')[1]);
+          const pid = params.get('pid');
+          if (pid) sessionStorage.setItem('last_pid', pid);
+        });
+      });
+    </script>
+{% endblock %}
