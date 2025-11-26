@@ -95,7 +95,7 @@ def doc_details():
     if clicked_doc_id in analytics_data.fact_clicks.keys():
         analytics_data.fact_clicks[clicked_doc_id] += 1
     else:
-        analytics_data.fact_clicks[clicked_doc_id] = 1
+        analytics_data.fact_clicks[clicked_doc_id] = 0
     if query_id:
         analytics_data.log_click(query_id=query_id, doc_id=clicked_doc_id, rank=rank)
     return render_template('doc_details.html')

@@ -1,5 +1,4 @@
 import json
-import random
 import time
 import uuid
 import altair as alt
@@ -32,13 +31,13 @@ class AnalyticsData:
         self.doc_click_counts = defaultdict(int)
         self._last_click_ts = {}
 
-    def _now(self): return time.time()
-    def _new_id(self): return str(uuid.uuid4())
+    def _now(self): 
+        return time.time()
+
+    def _new_id(self): 
+        return str(uuid.uuid4())
 
     def save_query_terms(self, terms: str) -> str:
-        """
-        Save query terms and return a query_id.
-        """
         query_id = self._new_id()
         tokens = [t for t in terms.split() if t]
         self.dim_queries[query_id] = {
@@ -85,7 +84,6 @@ class AnalyticsData:
             'ts': self._now(), 'query_id': query_id, 'doc_id': doc_id, 'rank': rank
         })
         self.doc_click_counts[doc_id] += 1
-        # Maintain compatibility with old dict
         if doc_id in self.fact_clicks.keys():
             self.fact_clicks[doc_id] += 1
         else:
@@ -103,13 +101,6 @@ class AnalyticsData:
             del self._last_click_ts[key]
 
     # ---------- Charts ----------
-    def chart_doc_clicks(self):
-        df = pd.DataFrame([{'Document ID': d, 'Clicks': c} for d, c in self.doc_click_counts.items()])
-        if df.empty: df = pd.DataFrame({'Document ID':[], 'Clicks':[]})
-        return alt.Chart(df).mark_bar().encode(
-            x=alt.X('Document ID:N', sort='-y'),
-            y='Clicks:Q'
-        ).properties(title='Clicks per document')
 
     def chart_query_length_distribution(self):
         df = pd.DataFrame([{'term_count': q['term_count']} for q in self.dim_queries.values()])
@@ -141,7 +132,6 @@ class AnalyticsData:
         ).properties(title='Dwell time distribution (seconds)')
 
     def plot_number_of_views(self):
-        # Keep your original method
         data = [{'Document ID': doc_id, 'Number of Views': count} for doc_id, count in self.fact_clicks.items()]
         df = pd.DataFrame(data)
         chart = alt.Chart(df).mark_bar().encode(
@@ -154,7 +144,6 @@ class AnalyticsData:
 
     def dashboard_html(self):
         charts = alt.vconcat(
-            self.chart_doc_clicks(),
             self.chart_query_length_distribution(),
             self.chart_ctr_by_rank(),
             self.chart_dwell_distribution()
