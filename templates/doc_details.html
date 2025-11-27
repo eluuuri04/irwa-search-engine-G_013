@@ -1,18 +1,133 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Document Detail - IRWA Search Engine</title>
-</head>
-<body>
-<div><a href="/" >Home</a></div>
-<div><a href="/stats" >Stats</a></div>
-<div><a href="/dashboard" >Dashboard</a></div>
-<h1>Document Detail Page</h1>
-<p>This is a placeholder for document details.</p>
-<p>Here you can display more information about the document.</p>
-<p>For example, you might show the full text of the document, metadata, or other relevant details.</p>
-<p>You can also include links to related documents or resources.</p>
-<p>Feel free to customize this page to fit the needs of your application.</p>
-</body>
-</html>
+{% extends "base.html" %}
+{% block page_title %}{{ doc.title if doc else 'Document' }}{% endblock %}
+
+{% block content %}
+<nav class="nav justify-content-center mb-4 irwa-nav">
+  <a class="nav-link" href="/">Home</a>
+  <a class="nav-link" href="/stats">Stats</a>
+  <a class="nav-link" href="/dashboard">Dashboard</a>
+</nav>
+
+{% if not doc %}
+  <div class="alert alert-warning">Document not found.</div>
+{% else %}
+
+<h1 class="text-center mb-4">{{ doc.title }}</h1>
+
+<!-- TABS + BUTTON -->
+<div class="d-flex justify-content-center align-items-center mb-4 flex-wrap">
+    <!-- Tabs con separación amplia -->
+    <button class="btn btn-outline-primary" style="margin-right: 20px;" onclick="showSection('images')">General Information</button>
+    <button class="btn btn-outline-primary" style="margin-right: 20px;" onclick="showSection('metadata')">Metadata</button>
+    <button class="btn btn-outline-primary" style="margin-right: 20px;" onclick="showSection('details')">Details</button>
+
+    <!-- Visit Original Website button -->
+    {% if doc.url %}
+        <a class="btn btn-danger fw-bold mb-2" href="{{ doc.url }}" target="_blank" style="white-space: nowrap;">
+            Visit Original Website
+        </a>
+    {% else %}
+        <span class="text-muted fw-bold mb-2">Not available</span>
+    {% endif %}
+</div>
+
+<!-- IMAGES -->
+<div id="images" class="irwa-section">
+    <div class="row mb-5 justify-content-center">
+        {% if doc.images %}
+            {% for img in doc.images %}
+                <div class="col-auto mb-3">
+                    <img src="{{ img }}" class="img-fluid shadow-sm" 
+                         style="max-width:180px; border-radius:12px; border:1px solid #ddd;">
+                </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-muted fst-italic fs-5">No images available</p>
+        {% endif %}
+    </div>
+
+    <!-- PRICE + AVAILABILITY INLINE -->
+    <div class="row text-center text-md-start mt-4 gx-4 gy-3">
+        <div class="col-md-4">
+            <p class="mb-1 fs-4"><strong>Original Price:</strong> 
+                <span class="fw-normal">{{ doc.actual_price }}</span>
+                {% if doc.discount %}
+                    <span class="text-muted fw-light">({{ doc.discount }}% discount)</span>
+                {% endif %}
+            </p>
+        </div>
+
+        <div class="col-md-4">
+            <p class="mb-1 fs-4"><strong>Selling Price:</strong> 
+                <span class="fw-bold text-success">{{ doc.selling_price }}</span>
+            </p>
+        </div>
+
+        <div class="col-md-4">
+            <p class="mb-1 fs-4"><strong>Availability:</strong> 
+                {% if doc.out_of_stock %}
+                    <span class="badge bg-danger fs-5">Without stock</span>
+                {% else %}
+                    <span class="badge bg-success fs-5">Available</span>
+                {% endif %}
+            </p>
+        </div>
+    </div>
+</div>
+
+
+<!-- METADATA -->
+<div id="metadata" class="irwa-section" style="display:none;">
+    <h3>Product Metadata</h3>
+    <ul class="list-group">
+        <li class="list-group-item"><strong>PID:</strong> {{ doc.pid }}</li>
+        <li class="list-group-item"><strong>Brand:</strong> {{ doc.brand }}</li>
+        <li class="list-group-item"><strong>Category:</strong> {{ doc.category }}</li>
+        <li class="list-group-item"><strong>Rating:</strong> {{ doc.average_rating }}</li>
+        <li class="list-group-item"><strong>Seller:</strong> {{ doc.seller }}</li>
+        <li class="list-group-item"><strong>URL:</strong> 
+            {% if doc.url %}
+                <a href="{{ doc.url }}" target="_blank">Visit website</a>
+            {% else %}
+                Not Available
+            {% endif %}
+        </li>
+    </ul>
+</div>
+
+<!-- DETAILS -->
+<div id="details" class="irwa-section" style="display:none;">
+    <h3>Description</h3>
+    <p>{{ doc.description }}</p>
+
+    <h3>Details of the product</h3>
+    <ul>
+        {% if doc.product_details %}
+            {% for key, value in doc.product_details.items() %}
+                <li><strong>{{ key }}:</strong> {{ value }}</li>
+            {% endfor %}
+        {% else %}
+            <li>There are no available details</li>
+        {% endif %}
+    </ul>
+</div>
+
+<script>
+    function showSection(name) {
+        document.querySelectorAll('.irwa-section').forEach(s => s.style.display = 'none');
+        document.getElementById(name).style.display = 'block';
+    }
+
+    showSection('images');
+
+    (function() {
+      try {
+        const params = new URLSearchParams(location.search);
+        const pid = params.get('pid');
+        if (pid) sessionStorage.setItem('last_pid', pid);
+      } catch(e){}
+    })();
+</script>
+
+{% endif %}
+{% endblock %}

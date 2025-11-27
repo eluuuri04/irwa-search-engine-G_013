@@ -1,29 +1,42 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    {# Using Bootstrap v4.6.1 #}
-    <link rel="stylesheet" href="{{ url_for('static',filename='styles/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static',filename='styles/custom.css') }}">
-    <title>{% block page_title %}{% endblock %} - IRWA Search Engine</title>
-    {% block header %}{% endblock %}
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="{{ url_for('static',filename='styles/bootstrap.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static',filename='styles/custom.css') }}">
+<link rel="stylesheet" href="{{ url_for('static',filename='styles/theme.css') }}">
+<title>{% block page_title %}{% endblock %} - IRWA Search Engine</title>
+{% block header %}{% endblock %}
 </head>
 <body>
-<div class="container">
-    <div class='header text-center'>
-        <a href="/">
-            <img src="{{ url_for('static', filename='logo.png') }}" width="100" alt="UPF logo"/>
+<div class="irwa-container container mt-4">
+<header class="mb-4">
+    <div class="d-flex align-items-center justify-content-between">
+        
+        <!-- LOGO LEFT -->
+        <a href="/" class="d-flex align-items-center">
+            <img src="{{ url_for('static', filename='logo.png') }}" width="90" alt="UPF logo">
         </a>
-        <span> IRWA Search Engine </span>
+
+        <!-- TITLE CENTER -->
+        <div class="flex-grow-1 text-center">
+            <div class="irwa-title fw-bold text-uppercase" style="font-size: 1.6rem;">
+                IRWA Search Engine
+            </div>
+        </div>
+
+        <!-- EMPTY SPACE RIGHT (para mantener centrado el título) -->
+        <div style="width:90px;"></div>
     </div>
-    <hr>
-    <div class='content'>
-        {% block content %}
-            base
-        {% endblock %}
-    </div>
-    <hr>
-    <div class='centered'>Information Retrieval and Web Analytics</div>
+</header>
+<hr>
+<main class='mt-3'>
+{% block content %}{% endblock %}
+</main>
+<hr>
+<footer class='text-center text-muted py-3 irwa-footer'>
+Information Retrieval and Web Analytics — UPF
+</footer>
 </div>
 </body>
 </html>

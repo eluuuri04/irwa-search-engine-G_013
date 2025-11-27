@@ -1,51 +1,115 @@
 {% extends "base.html" %}
 {% block page_title %}{{ page_title }}{% endblock %}
+
 {% block content %}
-    Found <strong>{{ found_counter }}</strong> results...
-    <hr>
-    {% if rag_response %}
-        <div class="mb-4 p-3" style="border: 1px solid #ccc; border-radius: 5px; background-color: #f9f9f9;">
-            <h5>AI-Generated Summary:</h5>
-            <p>{{ rag_response }}</p>
-        </div>
-    {% endif %}
-    <hr>
-    {% for item in results_list %}
-        <div class="pb-3">
-            <div class="doc-title">
-                <!-- Route clicks through /doc_details with pid, qid, rank -->
-                <a href="{{ url_for('doc_details', pid=item.pid, qid=query_id, rank=loop.index) }}"
-                   target="_blank" rel="noopener">
-                    {{ item.title }}
-                </a>
-            </div>
-            <div class="doc-desc">
-                {{ item.doc_date }} — {{ item.description }}
-            </div>
-        </div>
-    {% endfor %}
+<div class="mb-2">
+    Found <strong>{{ found_counter }}</strong> results for "<em>{{ session.get('last_search_query', '') }}</em>"
+</div>
 
-    <script>
-      // Track dwell time when user returns to results page
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-          const lastPid = sessionStorage.getItem('last_pid');
-          const qid = "{{ query_id }}";
-          if (lastPid && qid) {
-            fetch(`/return_to_results?qid=${encodeURIComponent(qid)}&pid=${encodeURIComponent(lastPid)}`)
-              .catch(() => {});
-            sessionStorage.removeItem('last_pid');
-          }
-        }
-      });
+<hr>
 
-      // Store last clicked doc id
-      document.querySelectorAll('a[href*="doc_details"]').forEach(a => {
-        a.addEventListener('click', () => {
-          const params = new URLSearchParams(a.href.split('?')[1]);
-          const pid = params.get('pid');
-          if (pid) sessionStorage.setItem('last_pid', pid);
-        });
-      });
-    </script>
+{% if rag_response %}
+    <div class="mb-4 p-3" style="border: 1px solid #ccc; border-radius: 5px; background-color: #f9f9f9;">
+        <h5>AI-Generated Summary:</h5>
+        <p>{{ rag_response }}</p>
+    </div>
+{% endif %}
+
+<div class="list-group">
+{% for item in results_list %}
+    <div class="list-group-item mb-3">
+        <div class="row">
+
+            <!-- IMAGEN -->
+            <div class="col-md-2 d-flex align-items-center">
+                {% if item.images and item.images|length > 0 %}
+                    <img src="{{ item.images[0] }}" alt="thumb"
+                         class="img-fluid rounded" style="max-height:100px;">
+                {% else %}
+                    <div class="bg-light text-center py-3"
+                         style="width:100%;height:100px;">No image</div>
+                {% endif %}
+            </div>
+
+            <!-- INFO PRINCIPAL -->
+            <div class="col-md-8">
+                <h5 class="mb-1">
+                    <a href="{{ url_for('doc_details', pid=item.pid, qid=query_id, rank=loop.index) }}"
+                       class="doc-link"
+                       data-pid="{{ item.pid }}">
+                        {{ item.title }}
+                    </a>
+                </h5>
+
+                <p class="mb-1 text-muted small">
+                    {{ item.doc_date }} — {{ item.description }}
+                </p>
+
+                <!-- BLOQUE PRECIO / DESCUENTO / RATING / SELLER -->
+                <div class="mt-2">
+                    <strong>Price:</strong>
+                    {{ item.selling_price if item.selling_price else "—" }}
+
+                    {% if item.discount %}
+                        <span class="text-muted">
+                            ({{ item.discount }}% discount)
+                        </span>
+                    {% endif %}
+
+                    &nbsp;&nbsp;
+
+                    <strong>Rating:</strong>
+                    {% if item.average_rating %}
+                        ⭐ {{ item.average_rating }}
+                    {% else %}
+                        — 
+                    {% endif %}
+
+                    &nbsp;&nbsp;
+
+                    <strong>Seller:</strong>
+                    {{ item.seller if item.seller else "—" }}
+                </div>
+            </div>
+
+            <!-- BOTÓN ORIGINAL -->
+            <div class="col-md-2 d-flex align-items-center justify-content-center">
+                {% if item.url %}
+                    <a class="btn btn-sm btn-primary w-100"
+                       href="{{ item.url }}"
+                       target="_blank"
+                       rel="noopener">
+                       Go to website
+                    </a>
+                {% else %}
+                    <span class="text-muted">No URL</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endfor %}
+</div>
+
+<script>
+  // Return-to-results (dwell time)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      const lastPid = sessionStorage.getItem('last_pid');
+      const qid = "{{ query_id }}";
+      if (lastPid && qid) {
+        fetch(`/return_to_results?qid=${encodeURIComponent(qid)}&pid=${encodeURIComponent(lastPid)}`)
+          .catch(() => {});
+        sessionStorage.removeItem('last_pid');
+      }
+    }
+  });
+
+  // Store last clicked doc id
+  document.querySelectorAll('a.doc-link').forEach(a => {
+    a.addEventListener('click', () => {
+      const pid = a.getAttribute('data-pid');
+      if (pid) sessionStorage.setItem('last_pid', pid);
+    });
+  });
+</script>
 {% endblock %}

@@ -1,0 +1,10 @@
+/* Soft grey background */
+body {
+background: #f7f7f8;
+}
+
+
+/* Soft card shadows */
+.card {
+box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+}

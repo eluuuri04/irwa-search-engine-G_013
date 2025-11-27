@@ -1,7 +1,8 @@
 import os
+import requests
 from json import JSONEncoder
 import httpagentparser
-from flask import Flask, render_template, session, request
+from flask import Flask, render_template, session, request, jsonify, redirect, url_for
 from myapp.analytics.analytics_data import AnalyticsData, ClickedDoc
 from myapp.search.load_corpus import load_corpus
 from myapp.search.objects import Document, StatsDocument
@@ -39,13 +40,24 @@ print("\nCorpus is loaded... \n First element:\n", list(corpus.values())[0])
 def _time_bucket():
     return f"{datetime.utcnow().hour:02d}:00"
 
+def _get_location_from_ip(ip: str):
+    try:
+        response = requests.get(f"https://ipinfo.io/{ip}/json")
+        data = response.json()
+        return data.get("country", "unknown"), data.get("city", "unknown")
+    except:
+        return "unknown", "unknown"
+
 def _ensure_context_and_log_request(path: str, method: str, status: int):
     user_agent = request.headers.get('User-Agent')
     agent = httpagentparser.detect(user_agent) or {}
     browser = agent.get('browser', {}).get('name', 'unknown')
     os_name = agent.get('os', {}).get('name', 'unknown')
     device = 'mobile' if agent.get('platform') == 'mobile' else 'desktop'
-    ctx_id = analytics_data.ensure_context(browser, os_name, device, _time_bucket())
+    ip = request.remote_addr
+    country, city = _get_location_from_ip(ip)
+    ctx_id = analytics_data.ensure_context(browser, os_name, device, _time_bucket(),
+                                           ip=ip, country=country, city=city)
     analytics_data.log_request(path, method, status, ctx_id)
 
 # --- Routes ---
@@ -59,47 +71,196 @@ def index():
     _ensure_context_and_log_request(path='/', method=request.method, status=200)
     return render_template('index.html', page_title="Welcome")
 
+# --- SEARCH POST ---
 @app.route('/search', methods=['POST'])
 def search_form_post():
-    _ensure_context_and_log_request(path='/search', method=request.method, status=200)
-    search_query = request.form['search-query']
+    # Obtener la query del formulario
+    search_query = request.form.get('search-query', '').strip()
+    
+    # Guardar la query en sesión opcionalmente
     session['last_search_query'] = search_query
-    query_id = analytics_data.save_query_terms(search_query)
-    results = search_engine.search(search_query, query_id, corpus)
-    analytics_data.log_result_impressions(query_id, [
-        {'pid': doc.pid, 'title': doc.title, 'url': doc.url} for doc in results
-    ])
-    rag_response = rag_generator.generate_response(search_query, results)
-    found_count = len(results)
-    session['last_found_count'] = found_count
+
+    # Guardar términos en analytics
+    try:
+        query_id = analytics_data.save_query_terms(search_query)
+    except Exception as e:
+        print(f"[ERROR] save_query_terms failed for query='{search_query}': {e}")
+        query_id = None
+
+    # Ejecutar búsqueda solo si hay query
+    results_list = []
+    rag_response = None
+    found_count = 0
+
+    if search_query and query_id is not None:
+        try:
+            results = search_engine.search(search_query, query_id, corpus)
+        except Exception as e:
+            print(f"[ERROR] search_engine.search failed for query='{search_query}': {e}")
+            results = []
+
+        # Construir lista de resultados
+        for doc in results:
+            full_doc = corpus.get(doc.pid)
+            if not full_doc:
+                continue
+            results_list.append({
+                'pid': full_doc.pid,
+                'title': full_doc.title,
+                'description': getattr(full_doc, 'description', ''),
+                'doc_date': getattr(full_doc, 'doc_date', ''),
+                'url': getattr(full_doc, 'url', ''),
+                'selling_price': getattr(full_doc, 'selling_price', 'N/A'),
+                'discount': getattr(full_doc, 'discount', ''),
+                'average_rating': getattr(full_doc, 'average_rating', 'N/A'),
+                'seller': getattr(full_doc, 'seller', '—'),
+                'images': getattr(full_doc, 'images', []),
+            })
+
+        found_count = len(results_list)
+        session['last_found_count'] = found_count
+
+        # Log de impresiones
+        if query_id is not None and results_list:
+            try:
+                analytics_data.log_result_impressions(query_id, [
+                    {'pid': doc['pid'], 'title': doc['title'], 'url': doc['url']} 
+                    for doc in results_list
+                ])
+            except Exception as e:
+                print(f"[ERROR] log_result_impressions failed for query_id={query_id}: {e}")
+
+        # Generar respuesta RAG
+        try:
+            rag_response = rag_generator.generate_response(search_query, results)
+        except Exception as e:
+            print(f"[ERROR] RAG generation failed for query='{search_query}': {e}")
+            rag_response = None
+
+    # Redirigir a GET con query como parámetro (PRG)
+    return redirect(url_for('search_results_get', search_query=search_query))
+
+
+# --- SEARCH GET (RESULTS PAGE) ---
+@app.route('/search_results', methods=['GET'])
+def search_results_get():
+    search_query = request.args.get('search_query', '').strip()
+
+    if not search_query:
+        return render_template(
+            "results.html",
+            results_list=[],
+            found_counter=0,
+            rag_response=None,
+            query_id=None,
+            search_query=""  # siempre pasar la query actual
+        )
+
+    # Guardar en sesión opcionalmente
+    session['last_search_query'] = search_query
+
+    # Guardar términos en analytics
+    try:
+        query_id = analytics_data.save_query_terms(search_query)
+    except Exception as e:
+        print(f"[ERROR] save_query_terms failed for query='{search_query}': {e}")
+        query_id = None
+
+    results_list = []
+    if query_id is not None:
+        try:
+            results = search_engine.search(search_query, query_id, corpus)
+        except Exception as e:
+            print(f"[ERROR] search_engine.search failed for query='{search_query}': {e}")
+            results = []
+
+        # Construir lista de resultados
+        for doc in results:
+            full_doc = corpus.get(doc.pid)
+            if not full_doc:
+                continue
+            results_list.append({
+                'pid': full_doc.pid,
+                'title': full_doc.title,
+                'description': getattr(full_doc, 'description', ''),
+                'doc_date': getattr(full_doc, 'doc_date', ''),
+                'url': getattr(full_doc, 'url', ''),
+                'selling_price': getattr(full_doc, 'selling_price', 'N/A'),
+                'discount': getattr(full_doc, 'discount', ''),
+                'average_rating': getattr(full_doc, 'average_rating', 'N/A'),
+                'seller': getattr(full_doc, 'seller', '—'),
+                'images': getattr(full_doc, 'images', []),
+            })
+
+        # Log de impresiones
+        if query_id is not None and results_list:
+            try:
+                analytics_data.log_result_impressions(query_id, [
+                    {'pid': doc['pid'], 'title': doc['title'], 'url': doc['url']} 
+                    for doc in results_list
+                ])
+            except Exception as e:
+                print(f"[ERROR] log_result_impressions failed for query_id={query_id}: {e}")
+
     return render_template(
-        'results.html',
-        results_list=results,
-        page_title="Results",
-        found_counter=found_count,
-        rag_response=rag_response,
-        query_id=query_id
+        "results.html",
+        results_list=results_list,
+        found_counter=len(results_list),
+        rag_response=None,
+        query_id=query_id,
+        search_query=search_query  # pasar explícitamente para mostrarlo en la plantilla
     )
 
+
+# --- DOC DETAILS ---
 @app.route('/doc_details', methods=['GET'])
 def doc_details():
     _ensure_context_and_log_request(path='/doc_details', method=request.method, status=200)
-    clicked_doc_id = request.args["pid"]
+    clicked_doc_id = request.args.get("pid")
     query_id = request.args.get("qid")
     rank_str = request.args.get("rank", "0")
     try:
         rank = int(rank_str)
     except:
         rank = 0
-    print(f"Click: doc={clicked_doc_id}, query={query_id}, rank={rank}")
-    if clicked_doc_id in analytics_data.fact_clicks.keys():
-        analytics_data.fact_clicks[clicked_doc_id] += 1
-    else:
-        analytics_data.fact_clicks[clicked_doc_id] = 1
-    if query_id:
-        analytics_data.log_click(query_id=query_id, doc_id=clicked_doc_id, rank=rank)
-    return render_template('doc_details.html')
 
+    print(f"Click: doc={clicked_doc_id}, query={query_id}, rank={rank}")
+
+    if clicked_doc_id:
+        analytics_data.fact_clicks[clicked_doc_id] = analytics_data.fact_clicks.get(clicked_doc_id, 0) + 1
+    if query_id and clicked_doc_id:
+        analytics_data.log_click(query_id=query_id, doc_id=clicked_doc_id, rank=rank)
+
+    doc = corpus.get(clicked_doc_id)
+    if not doc:
+        return render_template('doc_details.html', doc=None, page_title="Documento no encontrado"), 404
+
+    return render_template('doc_details.html', doc=doc, page_title=getattr(doc,'title', 'Documento'))
+
+# --- LOG INTERNAL CLICK ---
+@app.route('/log_internal_click', methods=['GET','POST'])
+def log_internal_click():
+    pid, element, meta = None, None, None
+    if request.method=="GET":
+        pid = request.args.get("pid")
+        element = request.args.get("element")
+    else:
+        try:
+            data = request.get_json(force=True)
+            pid = data.get("pid")
+            element = data.get("element")
+            meta = data.get("meta")
+        except:
+            pid = request.form.get("pid")
+            element = request.form.get("element")
+
+    if not pid:
+        return jsonify({"error":"pid required"}),400
+
+    analytics_data.log_internal_click(doc_id=pid, element=element, meta=meta)
+    return ('',204)
+
+# --- RETURN TO RESULTS ---
 @app.route('/return_to_results', methods=['GET'])
 def return_to_results():
     _ensure_context_and_log_request(path='/return_to_results', method=request.method, status=200)
@@ -107,46 +268,83 @@ def return_to_results():
     doc_id = request.args.get("pid")
     if query_id and doc_id:
         analytics_data.log_return_to_results(query_id=query_id, doc_id=doc_id)
-    return ('', 204)
+    return ('',204)
 
+# --- STATS ---
 @app.route('/stats', methods=['GET'])
 def stats():
     docs = []
-    for doc_id in analytics_data.fact_clicks:
-        row: Document = corpus[doc_id]
-        count = analytics_data.fact_clicks[doc_id]
-        doc = StatsDocument(pid=row.pid, title=row.title,
-                            description=row.description, url=row.url, count=count)
+    for doc_id, count in analytics_data.fact_clicks.items():
+        row: Document = corpus.get(doc_id)
+        if row:
+            doc = StatsDocument(pid=row.pid, title=row.title,
+                                description=row.description, url=row.url, count=count)
+        else:
+            doc = StatsDocument(pid=doc_id, title=doc_id, description="", url="", count=count)
         docs.append(doc)
     docs.sort(key=lambda doc: doc.count, reverse=True)
-    return render_template('stats.html', clicks_data=docs)
 
+    queries = []
+    for q in analytics_data.dim_queries.values():
+        queries.append({
+            "query_id": q["query_id"],
+            "terms": " ".join(q["terms"]),
+            "term_count": q["term_count"]
+        })
+
+    return render_template('stats.html', clicks_data=docs, queries_data=queries, page_title="Quick Stats")
+
+# --- DASHBOARD ---
 @app.route('/dashboard', methods=['GET'])
 def dashboard():
     visited_docs = []
-    for doc_id in analytics_data.fact_clicks.keys():
-        d: Document = corpus[doc_id]
-        doc = ClickedDoc(doc_id, d.description, analytics_data.fact_clicks[doc_id])
+    all_doc_ids = set(list(analytics_data.fact_clicks.keys()) + list(analytics_data.fact_internal_clicks.keys()))
+    for doc_id in all_doc_ids:
+        d: Document = corpus.get(doc_id)
+        views = analytics_data.fact_clicks.get(doc_id, 0)
+        internal = analytics_data.fact_internal_clicks.get(doc_id, 0)
+        desc = getattr(d,'description','') if d else ''
+        doc = ClickedDoc(doc_id, desc, views, internal)
         visited_docs.append(doc)
-    visited_docs.sort(key=lambda doc: doc.counter, reverse=True)
-    dashboard_html = analytics_data.dashboard_html()  # Altair charts
+
+    visited_docs.sort(key=lambda doc: (doc.internal_clicks, doc.views), reverse=True)
+    dashboard_html = analytics_data.dashboard_html()
     return render_template('dashboard.html',
                            visited_docs=visited_docs,
                            dashboard_html=dashboard_html,
                            page_title="Dashboard")
 
+# --- PLOT VIEWS ---
 @app.route('/plot_number_of_views', methods=['GET'])
 def plot_number_of_views():
     return analytics_data.plot_number_of_views()
 
+# --- ANALYTICS DASHBOARD ---
 @app.route('/analytics', methods=['GET'])
 def analytics_dashboard():
     _ensure_context_and_log_request(path='/analytics', method=request.method, status=200)
     html = analytics_data.dashboard_html()
-    return render_template('dashboard.html',
-                           page_title="Analytics",
-                           dashboard_html=html)
+    return render_template('dashboard.html', page_title="Analytics", dashboard_html=html)
 
-# --- Run ---
-if __name__ == "__main__":
+# --- METADATA ---
+@app.route('/metadata/<pid>', methods=['GET'])
+def metadata(pid):
+    _ensure_context_and_log_request(path='/metadata', method=request.method, status=200)
+    doc = corpus.get(pid)
+    if not doc:
+        return jsonify({"error":"not found"}),404
+    try:
+        if hasattr(doc,"to_json"): return jsonify(doc.to_json())
+        if isinstance(doc,dict): return jsonify(doc)
+        return jsonify(doc.__dict__)
+    except Exception as e:
+        return jsonify({"error":"could not serialize", "detail":str(e)}),500
+
+# --- RESULTS TEMPLATE ---
+@app.route("/results")
+def results():
+    return render_template("results.html")
+
+# --- RUN ---
+if __name__=="__main__":
     app.run(port=8088, host="0.0.0.0", threaded=False, debug=os.getenv("DEBUG"))
