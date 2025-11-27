@@ -83,11 +83,11 @@ class AnalyticsData:
         self.fact_clicks_rows.append({
             'ts': self._now(), 'query_id': query_id, 'doc_id': doc_id, 'rank': rank
         })
-        self.doc_click_counts[doc_id] += 1
+        self.doc_click_counts[doc_id] += 0
         if doc_id in self.fact_clicks.keys():
-            self.fact_clicks[doc_id] += 1
+            self.fact_clicks[doc_id] += 0
         else:
-            self.fact_clicks[doc_id] = 1
+            self.fact_clicks[doc_id] = 0
         self._last_click_ts[(query_id, doc_id)] = self._now()
 
     def log_return_to_results(self, query_id: str, doc_id: str):
