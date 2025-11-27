@@ -1,15 +1,39 @@
 {% extends "base.html" %}
+
 {% block page_title %}{{ page_title }}{% endblock %}
+
 {% block content %}
     <h2>Quick Stats</h2>
-    <h4>Clicked docs:</h4>
 
-    {% for doc in clicks_data %}
-        <div class="pb-3">
-            <div class="">
-                <span class="text-dark"> ({{ doc.count }} visits) </span> — id: {{ doc.pid }} — {{ doc.title }} - {{ doc.description }}
+    <!-- Section: Clicked documents -->
+    <h4>Clicked docs:</h4>
+    {% if clicks_data %}
+        {% for doc in clicks_data %}
+            <div class="pb-3">
+                <span class="text-dark">
+                    ({{ doc.count }} visits)
+                </span>
+                — id: {{ doc.pid }} — {{ doc.title }} - {{ doc.description }}
             </div>
-        </div>
-        <hr>
-    {% endfor %}
+            <hr>
+        {% endfor %}
+    {% else %}
+        <p>No documents have been clicked yet.</p>
+    {% endif %}
+
+    <!-- Section: Queries entered -->
+    <h4>Queries entered:</h4>
+    {% if queries_data %}
+        {% for q in queries_data %}
+            <div class="pb-2">
+                <span class="text-dark">{{ q.terms }}</span>
+                <small>(terms: {{ q.term_count }}, id: {{ q.query_id }})</small>
+            </div>
+            <hr>
+        {% endfor %}
+    {% else %}
+        <p>No queries have been entered yet.</p>
+    {% endif %}
 {% endblock %}
+
+

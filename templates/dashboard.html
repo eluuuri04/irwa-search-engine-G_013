@@ -1,38 +1,96 @@
 {% extends "base.html" %}
-{% block page_title %}{{ page_title if page_title else "Dashboard" }}{% endblock %}
+
+{% block page_title %}
+    {{ page_title if page_title else "Dashboard" }}
+{% endblock %}
 
 {% block header %}
-    <!-- Chart.js (used in iframe chart) -->
+    <!-- Chart.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.6.2/chart.min.js"
             integrity="sha512-tMabqarPtykgDtdtSqCL3uLVM0gS1ZkUAVhRFu1vSEFgvB73niFQWJuvviDyBGBH22Lcau4rHB5p2K2T0Xvr6Q=="
             crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 {% endblock %}
 
 {% block content %}
-    <div class="container mt-4">
-        <h3 class="mb-4">Dashboard</h3>
+<div class="container mt-4">
+    <h3 class="mb-4">Dashboard</h3>
 
-        <!-- Visited documents list (from results page clicks) -->
-        {% if visited_docs %}
-            <div class="mb-5">
-                <h5>Visited Documents</h5>
-                <ul class="list-group">
-                    {% for doc in visited_docs %}
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            {{ doc.doc_id }}
-                            <span class="badge bg-primary rounded-pill">{{ doc.counter }}</span>
-                        </li>
-                    {% endfor %}
-                </ul>
-            </div>
-        {% endif %}
+    {% if visited_docs %}
+        <!-- Llista de documents visitats -->
+        <div class="mb-5">
+            <h5>Visited Documents</h5>
+            <ul class="list-group">
+                {% for doc in visited_docs %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ doc.doc_id }}</strong>
+                            <div class="small text-muted">{{ doc.description }}</div>
+                        </div>
+                        <div class="text-end">
+                            <div>Views: 
+                                <span class="badge bg-primary rounded-pill">{{ doc.views }}</span>
+                            </div>
+                            <div>Internal clicks: 
+                                <span class="badge bg-secondary rounded-pill">{{ doc.internal_clicks }}</span>
+                            </div>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
 
-        <!-- Full Altair analytics dashboard -->
-        {% if dashboard_html %}
-            <div class="mb-5">
-                <h5>Analytics Dashboard</h5>
-                {{ dashboard_html | safe }}
-            </div>
-        {% endif %}
-    </div>
+        <!-- Gràfic de barres amb Chart.js -->
+        <div class="mb-5">
+            <h5>Document Views Comparison</h5>
+            <canvas id="viewsChart"></canvas>
+        </div>
+
+        <script>
+            const labels = JSON.parse('{{ visited_docs | map(attribute="doc_id") | list | tojson | safe }}');
+            const views = JSON.parse('{{ visited_docs | map(attribute="views") | list | tojson | safe }}');
+
+            new Chart(document.getElementById('viewsChart'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Views',
+                        data: views,
+                        backgroundColor: '#007bff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ' ' + context.formattedValue + ' Views';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Views' }
+                        },
+                        x: {
+                            ticks: { maxRotation: 45, minRotation: 45 }
+                        }
+                    }
+                }
+            });
+        </script>
+    {% endif %}
+
+    {% if dashboard_html %}
+        <!-- Gràfics Altair incrustats -->
+        <div class="mb-5">
+            <h5>Analytics Dashboard</h5>
+            {{ dashboard_html | safe }}
+        </div>
+    {% endif %}
+</div>
 {% endblock %}
