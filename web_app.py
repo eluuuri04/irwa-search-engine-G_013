@@ -151,7 +151,7 @@ def search_results_get():
             "results.html",
             results_list=[],
             found_counter=0,
-            rag_response=None,
+            rag_response=rag_response,
             query_id=None,
             search_query=""  # siempre pasar la query actual
         )
@@ -201,12 +201,14 @@ def search_results_get():
                 ])
             except Exception as e:
                 print(f"[ERROR] log_result_impressions failed for query_id={query_id}: {e}")
+    
+    rag_response = rag_generator.generate_response(search_query, results) 
 
     return render_template(
         "results.html",
         results_list=results_list,
         found_counter=len(results_list),
-        rag_response=None,
+        rag_response=rag_response,
         query_id=query_id,
         search_query=search_query  # pasar explícitamente para mostrarlo en la plantilla
     )
