@@ -16,14 +16,28 @@
 
 <!-- TABS + BUTTON -->
 <div class="d-flex justify-content-center align-items-center mb-4 flex-wrap">
-    <!-- Tabs con separación amplia -->
-    <button class="btn btn-outline-primary" style="margin-right: 20px;" onclick="showSection('images')">General Information</button>
-    <button class="btn btn-outline-primary" style="margin-right: 20px;" onclick="showSection('metadata')">Metadata</button>
-    <button class="btn btn-outline-primary" style="margin-right: 20px;" onclick="showSection('details')">Details</button>
+    <button class="btn btn-outline-primary" 
+            style="margin-right: 20px;" 
+            onclick="trackClick('images'); showSection('images')">
+        General Information
+    </button>
+    <button class="btn btn-outline-primary" 
+            style="margin-right: 20px;" 
+            onclick="trackClick('metadata'); showSection('metadata')">
+        Metadata
+    </button>
+    <button class="btn btn-outline-primary" 
+            style="margin-right: 20px;" 
+            onclick="trackClick('details'); showSection('details')">
+        Details
+    </button>
 
-    <!-- Visit Original Website button -->
     {% if doc.url %}
-        <a class="btn btn-danger fw-bold mb-2" href="{{ doc.url }}" target="_blank" style="white-space: nowrap;">
+        <a class="btn btn-danger fw-bold mb-2" 
+           href="{{ doc.url }}" 
+           target="_blank" 
+           style="white-space: nowrap;"
+           onclick="trackClick('visit_original_website')">
             Visit Original Website
         </a>
     {% else %}
@@ -46,7 +60,6 @@
         {% endif %}
     </div>
 
-    <!-- PRICE + AVAILABILITY INLINE -->
     <div class="row text-center text-md-start mt-4 gx-4 gy-3">
         <div class="col-md-4">
             <p class="mb-1 fs-4"><strong>Original Price:</strong> 
@@ -75,7 +88,6 @@
     </div>
 </div>
 
-
 <!-- METADATA -->
 <div id="metadata" class="irwa-section" style="display:none;">
     <h3>Product Metadata</h3>
@@ -87,7 +99,7 @@
         <li class="list-group-item"><strong>Seller:</strong> {{ doc.seller }}</li>
         <li class="list-group-item"><strong>URL:</strong> 
             {% if doc.url %}
-                <a href="{{ doc.url }}" target="_blank">Visit website</a>
+                <a href="{{ doc.url }}" target="_blank" onclick="trackClick('metadata_url')">Visit website</a>
             {% else %}
                 Not Available
             {% endif %}
@@ -113,20 +125,34 @@
 </div>
 
 <script>
+    // ---------- Section toggle ----------
     function showSection(name) {
         document.querySelectorAll('.irwa-section').forEach(s => s.style.display = 'none');
         document.getElementById(name).style.display = 'block';
     }
-
     showSection('images');
 
-    (function() {
-      try {
-        const params = new URLSearchParams(location.search);
-        const pid = params.get('pid');
-        if (pid) sessionStorage.setItem('last_pid', pid);
-      } catch(e){}
-    })();
+    // ---------- Internal click tracking ----------
+    function trackClick(element) {
+        fetch("/log_internal_click", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pid: "{{ doc.pid }}", element: element })
+        }).catch(err => console.error("Click tracking failed:", err));
+    }
+
+    // ---------- Dwell time tracking ----------
+    const docOpenTs = Date.now() / 1000; // seconds
+
+    window.addEventListener("beforeunload", function() {
+        const dwellSeconds = (Date.now() / 1000) - docOpenTs;
+        const data = new FormData();
+        data.append("pid", "{{ doc.pid }}");
+        data.append("query_id", "{{ query_id }}");
+        data.append("dwell_seconds", dwellSeconds);
+
+        navigator.sendBeacon("/log_dwell_time", new URLSearchParams(data));
+    });
 </script>
 
 {% endif %}

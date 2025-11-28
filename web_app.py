@@ -11,9 +11,9 @@ from myapp.generation.rag import RAGGenerator
 from dotenv import load_dotenv
 from datetime import datetime
 
-load_dotenv()  # take environment variables from .env
+load_dotenv()
 
-# --- JSON encoder patch for to_json methods ---
+# --- JSON encoder patch ---
 def _default(self, obj):
     return getattr(obj.__class__, "to_json", _default.default)(obj)
 _default.default = JSONEncoder().default
@@ -64,117 +64,48 @@ def _ensure_context_and_log_request(path: str, method: str, status: int):
 @app.route('/')
 def index():
     session['some_var'] = "Some value that is kept in session"
-    user_agent = request.headers.get('User-Agent')
-    user_ip = request.remote_addr
-    agent = httpagentparser.detect(user_agent)
-    print("Remote IP:", user_ip, "Agent:", agent)
     _ensure_context_and_log_request(path='/', method=request.method, status=200)
     return render_template('index.html', page_title="Welcome")
 
 # --- SEARCH POST ---
 @app.route('/search', methods=['POST'])
 def search_form_post():
-    # Obtener la query del formulario
     search_query = request.form.get('search-query', '').strip()
-    
-    # Guardar la query en sesión opcionalmente
     session['last_search_query'] = search_query
-
-    # Guardar términos en analytics
-    try:
-        query_id = analytics_data.save_query_terms(search_query)
-    except Exception as e:
-        print(f"[ERROR] save_query_terms failed for query='{search_query}': {e}")
-        query_id = None
-
-    # Ejecutar búsqueda solo si hay query
-    results_list = []
-    rag_response = None
-    found_count = 0
-
-    if search_query and query_id is not None:
-        try:
-            results = search_engine.search(search_query, query_id, corpus)
-        except Exception as e:
-            print(f"[ERROR] search_engine.search failed for query='{search_query}': {e}")
-            results = []
-
-        # Construir lista de resultados
-        for doc in results:
-            full_doc = corpus.get(doc.pid)
-            if not full_doc:
-                continue
-            results_list.append({
-                'pid': full_doc.pid,
-                'title': full_doc.title,
-                'description': getattr(full_doc, 'description', ''),
-                'doc_date': getattr(full_doc, 'doc_date', ''),
-                'url': getattr(full_doc, 'url', ''),
-                'selling_price': getattr(full_doc, 'selling_price', 'N/A'),
-                'discount': getattr(full_doc, 'discount', ''),
-                'average_rating': getattr(full_doc, 'average_rating', 'N/A'),
-                'seller': getattr(full_doc, 'seller', '—'),
-                'images': getattr(full_doc, 'images', []),
-            })
-
-        found_count = len(results_list)
-        session['last_found_count'] = found_count
-
-        # Log de impresiones
-        if query_id is not None and results_list:
-            try:
-                analytics_data.log_result_impressions(query_id, [
-                    {'pid': doc['pid'], 'title': doc['title'], 'url': doc['url']} 
-                    for doc in results_list
-                ])
-            except Exception as e:
-                print(f"[ERROR] log_result_impressions failed for query_id={query_id}: {e}")
-
-        # Generar respuesta RAG
-        try:
-            rag_response = rag_generator.generate_response(search_query, results)
-        except Exception as e:
-            print(f"[ERROR] RAG generation failed for query='{search_query}': {e}")
-            rag_response = None
-
-    # Redirigir a GET con query como parámetro (PRG)
+    # No fem analytics aquí → PRG
     return redirect(url_for('search_results_get', search_query=search_query))
 
-
-# --- SEARCH GET (RESULTS PAGE) ---
+# --- SEARCH GET ---
 @app.route('/search_results', methods=['GET'])
 def search_results_get():
     search_query = request.args.get('search_query', '').strip()
 
-    if not search_query:
-        return render_template(
-            "results.html",
-            results_list=[],
-            found_counter=0,
-            rag_response=rag_response,
-            query_id=None,
-            search_query=""  # siempre pasar la query actual
-        )
+    results_list, results = [], []
+    rag_response, query_id = None, None
 
-    # Guardar en sesión opcionalmente
+    if not search_query:
+        return render_template("results.html",
+                               results_list=[],
+                               found_counter=0,
+                               rag_response=None,
+                               query_id=None,
+                               search_query="")
+
     session['last_search_query'] = search_query
 
-    # Guardar términos en analytics
     try:
         query_id = analytics_data.save_query_terms(search_query)
     except Exception as e:
-        print(f"[ERROR] save_query_terms failed for query='{search_query}': {e}")
+        print(f"[ERROR] save_query_terms failed: {e}")
         query_id = None
 
-    results_list = []
     if query_id is not None:
         try:
             results = search_engine.search(search_query, query_id, corpus)
         except Exception as e:
-            print(f"[ERROR] search_engine.search failed for query='{search_query}': {e}")
+            print(f"[ERROR] search_engine.search failed: {e}")
             results = []
 
-        # Construir lista de resultados
         for doc in results:
             full_doc = corpus.get(doc.pid)
             if not full_doc:
@@ -192,52 +123,61 @@ def search_results_get():
                 'images': getattr(full_doc, 'images', []),
             })
 
-        # Log de impresiones
-        if query_id is not None and results_list:
+        if results_list:
             try:
                 analytics_data.log_result_impressions(query_id, [
-                    {'pid': doc['pid'], 'title': doc['title'], 'url': doc['url']} 
+                    {'pid': doc['pid'], 'title': doc['title'], 'url': doc['url']}
                     for doc in results_list
                 ])
             except Exception as e:
-                print(f"[ERROR] log_result_impressions failed for query_id={query_id}: {e}")
-    
-    rag_response = rag_generator.generate_response(search_query, results) 
+                print(f"[ERROR] log_result_impressions failed: {e}")
 
-    return render_template(
-        "results.html",
-        results_list=results_list,
-        found_counter=len(results_list),
-        rag_response=rag_response,
-        query_id=query_id,
-        search_query=search_query  # pasar explícitamente para mostrarlo en la plantilla
-    )
+    try:
+        rag_response = rag_generator.generate_response(search_query, results)
+    except Exception as e:
+        print(f"[ERROR] RAG generation failed: {e}")
+        rag_response = None
 
+    return render_template("results.html",
+                           results_list=results_list,
+                           found_counter=len(results_list),
+                           rag_response=rag_response,
+                           query_id=query_id,
+                           search_query=search_query)
 
 # --- DOC DETAILS ---
 @app.route('/doc_details', methods=['GET'])
 def doc_details():
     _ensure_context_and_log_request(path='/doc_details', method=request.method, status=200)
+
     clicked_doc_id = request.args.get("pid")
     query_id = request.args.get("qid")
     rank_str = request.args.get("rank", "0")
+
     try:
         rank = int(rank_str)
     except:
         rank = 0
 
-    print(f"Click: doc={clicked_doc_id}, query={query_id}, rank={rank}")
-
-    if clicked_doc_id:
-        analytics_data.fact_clicks[clicked_doc_id] = analytics_data.fact_clicks.get(clicked_doc_id, 0) + 1
+    # Log click (start dwell)
     if query_id and clicked_doc_id:
         analytics_data.log_click(query_id=query_id, doc_id=clicked_doc_id, rank=rank)
 
     doc = corpus.get(clicked_doc_id)
     if not doc:
-        return render_template('doc_details.html', doc=None, page_title="Documento no encontrado"), 404
+        return render_template(
+            'doc_details.html', 
+            doc=None, 
+            query_id=query_id, 
+            page_title="Document not found"
+        ), 404
 
-    return render_template('doc_details.html', doc=doc, page_title=getattr(doc,'title', 'Documento'))
+    return render_template(
+        'doc_details.html',
+        doc=doc,
+        query_id=query_id,     # ✅ ESSENTIAL for dwell tracking
+        page_title=getattr(doc, 'title', 'Document')
+    )
 
 # --- LOG INTERNAL CLICK ---
 @app.route('/log_internal_click', methods=['GET','POST'])
@@ -265,12 +205,42 @@ def log_internal_click():
 # --- RETURN TO RESULTS ---
 @app.route('/return_to_results', methods=['GET'])
 def return_to_results():
+    print("🔥 /return_to_results HIT:", request.args)   # DEBUG LOG
+
     _ensure_context_and_log_request(path='/return_to_results', method=request.method, status=200)
+
     query_id = request.args.get("qid")
-    doc_id = request.args.get("pid")
+    doc_id   = request.args.get("pid")
+
     if query_id and doc_id:
         analytics_data.log_return_to_results(query_id=query_id, doc_id=doc_id)
-    return ('',204)
+
+    return ('', 204)
+
+@app.route("/log_dwell_time", methods=["POST"])
+def log_dwell_time():
+    pid = request.form.get("pid")
+    query_id = request.form.get("query_id")
+    dwell_seconds = request.form.get("dwell_seconds")
+
+    if not pid or not dwell_seconds:
+        return jsonify({"error": "pid and dwell_seconds required"}), 400
+
+    try:
+        dwell_seconds = float(dwell_seconds)
+    except ValueError:
+        dwell_seconds = 0.0
+
+    # Append to fact_dwells directly
+    analytics_data.fact_dwells.append({
+        "ts": analytics_data._now(),
+        "query_id": query_id,
+        "doc_id": pid,
+        "dwell_seconds": dwell_seconds
+    })
+
+    return "", 204
+
 
 # --- STATS ---
 @app.route('/stats', methods=['GET'])
@@ -319,7 +289,7 @@ def dashboard():
 # --- PLOT VIEWS ---
 @app.route('/plot_number_of_views', methods=['GET'])
 def plot_number_of_views():
-    return analytics_data.plot_number_of_views()
+    return analytics_data.chart_number_of_views().to_html()
 
 # --- ANALYTICS DASHBOARD ---
 @app.route('/analytics', methods=['GET'])
@@ -334,13 +304,15 @@ def metadata(pid):
     _ensure_context_and_log_request(path='/metadata', method=request.method, status=200)
     doc = corpus.get(pid)
     if not doc:
-        return jsonify({"error":"not found"}),404
+        return jsonify({"error": "not found"}), 404
     try:
-        if hasattr(doc,"to_json"): return jsonify(doc.to_json())
-        if isinstance(doc,dict): return jsonify(doc)
+        if hasattr(doc, "to_json"):
+            return jsonify(doc.to_json())
+        if isinstance(doc, dict):
+            return jsonify(doc)
         return jsonify(doc.__dict__)
     except Exception as e:
-        return jsonify({"error":"could not serialize", "detail":str(e)}),500
+        return jsonify({"error": "could not serialize", "detail": str(e)}), 500
 
 # --- RESULTS TEMPLATE ---
 @app.route("/results")
@@ -348,5 +320,5 @@ def results():
     return render_template("results.html")
 
 # --- RUN ---
-if __name__=="__main__":
+if __name__ == "__main__":
     app.run(port=8088, host="0.0.0.0", threaded=False, debug=os.getenv("DEBUG"))
