@@ -65,7 +65,7 @@ Return ONLY the corrected text, no explanation.
         if not retrieved_results:
             return "There are no good products that fit the request based on the retrieved results."
 
-        # 🔥 Hard Filtering using gender + color (required intent)
+        # Hard Filtering using gender + color (required intent)
         gender_terms = ["men", "women", "male", "female"]
         detected_gender = [g for g in gender_terms if g in query_lower]
 
@@ -92,7 +92,7 @@ Return ONLY the corrected text, no explanation.
 
         final_results = filtered[:top_N]
 
-        # 🔥 Include all metadata available to improve ranking accuracy
+        # Include all metadata available to improve ranking accuracy
         formatted_docs = "\n".join([
             f"- PID: {r.pid} | Name: {r.title} | Price: {getattr(r, 'selling_price', 'N/A')} | "
             f"Rating: {getattr(r, 'average_rating', 'N/A')} | Brand: {getattr(r, 'brand', 'N/A')} | "
