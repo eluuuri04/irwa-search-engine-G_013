@@ -11,124 +11,108 @@ class RAGGenerator:
 You are an expert product advisor for an e-commerce website.
 
 ### Your Objective:
-Recommend the single best product that satisfies the user's request **as precisely as possible**.
+Recommend the single best product that satisfies the user's request as accurately as possible.
 
-### Mandatory Hard Rules:
-- MUST match product type (t-shirt must not be shorts, shoes, pants, etc.)
-- MUST match user-intended gender (men vs women)
-- MUST match color if included in the user query
-- Prefer matches for material (cotton blend, polyester, etc.)
+### Important Attribute Usage:
+When deciding the best product:
+- HIGH priority to matching: gender, color, material, product category/type
+- USE additional metadata to justify selection: price/value, rating, brand
+- Prefer higher rated or better value product when attributes are similar
 
-### Selection Priorities (after hard rules):
-1️⃣ Closest match to user intent (color, material, fit, style)
-2️⃣ Quality indicators (rating, brand)
-3️⃣ Price fairness and value for money
+### Mandatory Safety Rule:
+If NONE of the retrieved products meet the key user intent (gender, product type, and color when provided):
+respond EXACTLY:
 
-### Disqualification Rules:
-Do NOT select products that:
-- Do not match category/type
-- Are for the wrong gender
-- Are a worse attribute match when a better one exists
-
-If **no** product is a valid match, respond EXACTLY:
 "There are no good products that fit the request based on the retrieved results."
+
+### Corrected Query:
+{corrected_query}
 
 ### Retrieved Products:
 {retrieved_results}
 
-### User Request:
-{user_query}
-
 ### Output Format (strict):
 - Best Product: [PID] [Product Name]
-- Why: [Precise attribute-based justification]
-- Alternative: [Optional: only if strongly relevant]
+- Why: [Precise justification referencing only visible attributes: color, style, rating, price, brand, etc.]
+- Alternative: [Optional only if strongly relevant and must match intent]
 """
 
-
-    def generate_response(self, user_query: str, retrieved_results: list, top_N: int = 20) -> str:
-
-        DEFAULT_ANSWER = "RAG is not available. Check your credentials (.env file) or account limits."
-
+    def normalize_query(self, query: str) -> str:
+        """Correct spelling and grammar using Groq."""
         try:
-            if not retrieved_results:
-                return "There are no good products that fit the request based on the retrieved results."
+            client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+            model_name = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+            prompt = f"""
+Correct the spelling and grammar of this shopping query:
 
-            query_lower = user_query.lower()
-            filtered = []
+"{query}"
 
-            # ---------------------------
-            # 🔥 HARD FILTER: PRODUCT TYPE + GENDER
-            # ---------------------------
-            for res in retrieved_results:
-                title = getattr(res, "title", "").lower()
-                desc = getattr(res, "description", "").lower()
-                text = title + " " + desc
-
-                # Must be a T-Shirt
-                if not ("t shirt" in text or "t-shirt" in text or "tshirt" in text):
-                    continue
-
-                # Gender filtering
-                if "men" in query_lower and "men" not in text:
-                    continue
-                if "women" in query_lower and "women" not in text:
-                    continue
-
-                filtered.append(res)
-
-            # ---------------------------
-            # 🔥 HARD FILTER: COLOR
-            # ---------------------------
-            color_keywords = ["grey", "gray", "blue", "black", "white", "red", "yellow", "green", "pink"]
-            detected_colors = [c for c in color_keywords if c in query_lower]
-
-            if detected_colors:
-                color_filtered = []
-                for res in filtered:
-                    text = getattr(res, "title", "").lower() + getattr(res, "description", "").lower()
-                    if any(color in text for color in detected_colors):
-                        color_filtered.append(res)
-
-                # Only override if we found exact color matches
-                if color_filtered:
-                    filtered = color_filtered
-
-            # Fallback — if filters removed everything
-            final_results = filtered[:top_N] if filtered else retrieved_results[:top_N]
-
-            # ---------------------------
-            # Format results for LLM
-            # ---------------------------
-            formatted_results = "\n".join([
-                f"- PID: {res.pid} | "
-                f"Name: {getattr(res, 'title', 'N/A')} | "
-                f"Price: {getattr(res, 'selling_price', 'N/A')} | "
-                f"Rating: {getattr(res, 'average_rating', 'N/A')} | "
-                f"Brand: {getattr(res, 'brand', 'N/A')} | "
-                f"Category: {getattr(res, 'category', 'N/A')} | "
-                f"Info: {(getattr(res, 'description', '')[:120] + '...') if hasattr(res, 'description') else 'N/A'}"
-                for res in final_results
-            ])
-
-            prompt = self.PROMPT_TEMPLATE.format(
-                retrieved_results=formatted_results,
-                user_query=user_query,
-            )
-
-            # ---------------------------
-            # Groq API Client Call
-            # ---------------------------
-            client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-            model_name = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
-
-            chat_completion = client.chat.completions.create(
+Return ONLY the corrected text, no explanation.
+"""
+            response = client.chat.completions.create(
                 model=model_name,
                 messages=[{"role": "user", "content": prompt}],
             )
+            return response.choices[0].message.content.strip()
+        except Exception:
+            return query
 
-            return chat_completion.choices[0].message.content
+    def generate_response(self, user_query: str, retrieved_results: list, top_N: int = 20) -> str:
+        corrected_query = self.normalize_query(user_query)
+        query_lower = corrected_query.lower()
 
-        except Exception as e:
-            print(f"Error during RAG generation: {e}")
-            return DEFAULT_ANSWER
+        # Early exit if nothing available
+        if not retrieved_results:
+            return "There are no good products that fit the request based on the retrieved results."
+
+        # 🔥 Hard Filtering using gender + color (required intent)
+        gender_terms = ["men", "women", "male", "female"]
+        detected_gender = [g for g in gender_terms if g in query_lower]
+
+        color_terms = ["grey", "gray", "blue", "black", "white", "red", "yellow", "green", "pink"]
+        detected_colors = [c for c in color_terms if c in query_lower]
+
+        filtered = []
+        for res in retrieved_results:
+            text = f"{res.title} {res.description}".lower()
+
+            if detected_gender:
+                if not any(g in text for g in detected_gender):
+                    continue
+
+            if detected_colors:
+                if not any(c in text for c in detected_colors):
+                    continue
+
+            filtered.append(res)
+
+        # Fallback: If filter eliminates everything → no valid product
+        if not filtered:
+            return "There are no good products that fit the request based on the retrieved results."
+
+        final_results = filtered[:top_N]
+
+        # 🔥 Include all metadata available to improve ranking accuracy
+        formatted_docs = "\n".join([
+            f"- PID: {r.pid} | Name: {r.title} | Price: {getattr(r, 'selling_price', 'N/A')} | "
+            f"Rating: {getattr(r, 'average_rating', 'N/A')} | Brand: {getattr(r, 'brand', 'N/A')} | "
+            f"Category: {getattr(r, 'category', 'N/A')} | Color: {getattr(getattr(r, 'product_details', {}), 'Color', 'N/A')}"
+            for r in final_results
+        ])
+
+        prompt = self.PROMPT_TEMPLATE.format(
+            corrected_query=corrected_query,
+            retrieved_results=formatted_docs,
+        )
+
+        try:
+            client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+            model_name = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return response.choices[0].message.content
+
+        except Exception:
+            return "AI Ranking unavailable — please try again."

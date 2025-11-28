@@ -78,64 +78,67 @@ def search_form_post():
 # --- SEARCH GET ---
 @app.route('/search_results', methods=['GET'])
 def search_results_get():
-    search_query = request.args.get('search_query', '').strip()
+    raw_query = request.args.get('search_query', '').strip()
 
-    results_list, results = [], []
-    rag_response, query_id = None, None
-
-    if not search_query:
+    if not raw_query:
         return render_template("results.html",
                                results_list=[],
                                found_counter=0,
                                rag_response=None,
                                query_id=None,
-                               search_query="")
+                               raw_query="",
+                               corrected_query="")
 
-    session['last_search_query'] = search_query
+    # ✨ 1️⃣ Correct the query using AI
+    corrected_query = rag_generator.normalize_query(raw_query)
 
+    # Save both versions in session
+    session['raw_query'] = raw_query
+    session['corrected_query'] = corrected_query
+
+    # 2️⃣ Analytics logs store the corrected query (higher quality data)
     try:
-        query_id = analytics_data.save_query_terms(search_query)
-    except Exception as e:
-        print(f"[ERROR] save_query_terms failed: {e}")
+        query_id = analytics_data.save_query_terms(corrected_query)
+    except:
         query_id = None
 
-    if query_id is not None:
-        try:
-            results = search_engine.search(search_query, query_id, corpus)
-        except Exception as e:
-            print(f"[ERROR] search_engine.search failed: {e}")
-            results = []
+    # 3️⃣ Retrieve with corrected query
+    results_list, results = [], []
+    try:
+        results = search_engine.search(corrected_query, query_id, corpus)
+    except Exception:
+        results = []
 
-        for doc in results:
-            full_doc = corpus.get(doc.pid)
-            if not full_doc:
-                continue
+    # Convert results for UI
+    for res in results:
+        doc = corpus.get(res.pid)
+        if doc:
             results_list.append({
-                'pid': full_doc.pid,
-                'title': full_doc.title,
-                'description': getattr(full_doc, 'description', ''),
-                'doc_date': getattr(full_doc, 'doc_date', ''),
-                'url': getattr(full_doc, 'url', ''),
-                'selling_price': getattr(full_doc, 'selling_price', 'N/A'),
-                'discount': getattr(full_doc, 'discount', ''),
-                'average_rating': getattr(full_doc, 'average_rating', 'N/A'),
-                'seller': getattr(full_doc, 'seller', '—'),
-                'images': getattr(full_doc, 'images', []),
+                'pid': doc.pid,
+                'title': doc.title,
+                'description': getattr(doc, 'description', ''),
+                'url': getattr(doc, 'url', ''),
+                'selling_price': getattr(doc, 'selling_price', 'N/A'),
+                'discount': getattr(doc, 'discount', ''),
+                'average_rating': getattr(doc, 'average_rating', 'N/A'),
+                'seller': getattr(doc, 'seller', '—'),
+                'images': getattr(doc, 'images', [])
             })
 
-        if results_list:
-            try:
-                analytics_data.log_result_impressions(query_id, [
-                    {'pid': doc['pid'], 'title': doc['title'], 'url': doc['url']}
-                    for doc in results_list
-                ])
-            except Exception as e:
-                print(f"[ERROR] log_result_impressions failed: {e}")
+    # 4️⃣ Log impressions
+    if query_id:
+        try:
+            analytics_data.log_result_impressions(query_id, [
+                {'pid': d['pid'], 'title': d['title'], 'url': d['url']}
+                for d in results_list
+            ])
+        except Exception:
+            pass
 
+    # 5️⃣ RAG ranking using corrected query
     try:
-        rag_response = rag_generator.generate_response(search_query, results)
-    except Exception as e:
-        print(f"[ERROR] RAG generation failed: {e}")
+        rag_response = rag_generator.generate_response(corrected_query, results)
+    except Exception:
         rag_response = None
 
     return render_template("results.html",
@@ -143,7 +146,9 @@ def search_results_get():
                            found_counter=len(results_list),
                            rag_response=rag_response,
                            query_id=query_id,
-                           search_query=search_query)
+                           raw_query=raw_query,
+                           corrected_query=corrected_query)
+
 
 # --- DOC DETAILS ---
 @app.route('/doc_details', methods=['GET'])
