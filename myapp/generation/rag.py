@@ -115,4 +115,4 @@ Return ONLY the corrected text, no explanation.
             return response.choices[0].message.content
 
         except Exception:
-            return "AI Ranking unavailable — please try again."
+            return "AI Ranking unavailable — please check API Key and try again ."
